@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Live Roulette - Real Casino Standard</title>
+  <style>
+    /* ================= 基础重置 ================= */
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+    
+    body { 
+      background-color: #000; color: #fff; display: flex; flex-direction: column; 
+      width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; 
+    }
+
+    :root {
+      --gold: #d4af37; --gold-light: #f9e596;
+      --table-green: #0b3d1f; --table-green-dark: #041a0d;
+      --r-red: #d32f2f; --r-black: #151515; --r-green: #2e7d32;
+    }
+
+    /* ================= 1. 顶部影片占位区 (严格 16:9) ================= */
+    .video-container {
+      width: 100%; 
+      aspect-ratio: 16 / 9 !important; /* 强制严格 16:9 比例 */
+      background: #000; 
+      z-index: 1; flex-shrink: 0; 
+      position: relative;
+    }
+
+    /* ================= 2. 状态与计时信息条 ================= */
+    .info-strip {
+      display: flex; justify-content: space-between; align-items: center; 
+      background: #1a1a1a; padding: 6px 12px; font-size: 11px; color: #ddd;
+      border-bottom: 1px solid #333; border-top: 1px solid #333; z-index: 2; flex-shrink: 0;
+    }
+    .table-info { display: flex; gap: 10px; color: #aaa; }
+    .balance-info { font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 3px; color: #fff; }
+    
+    .timer-bar-container {
+      flex: 1; max-width: 140px; height: 7px; background: #333; margin: 0 15px;
+      border-radius: 3px; overflow: hidden; border: 1px solid #000;
+    }
+    .timer-bar {
+      height: 100%; width: 100%; background: #4caf50; 
+      transition: width 0.1s linear, background-color 0.3s;
+    }
+    .timer-bar.warning { background: #ff9800; }
+    .timer-bar.danger { background: #f44336; }
+
+    /* ================= 3. 下半区游戏交互区 ================= */
+    .game-interface { 
+      background: radial-gradient(ellipse at center, var(--table-green) 0%, var(--table-green-dark) 100%);
+      flex: 1; position: relative; display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: inset 0 5px 15px rgba(0,0,0,0.8); padding: 8px;
+    }
+
+    /* 高级开奖徽章弹窗 (完美居中) */
+    .result-banner {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9);
+      background: rgba(10, 10, 10, 0.95); border: 2px solid var(--gold);
+      padding: 18px 32px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 100;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.95);
+    }
+    .result-banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    .res-subtitle { font-size: 12px; color: var(--gold-light); letter-spacing: 2px; font-weight: 800; margin-bottom: 8px; text-transform: uppercase;}
+    
+    .winning-badge {
+      width: 65px; height: 65px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 32px; font-weight: 900; color: #fff; border: 3px solid var(--gold); 
+      box-shadow: 0 0 20px rgba(212,175,55,0.7), inset 0 0 10px rgba(0,0,0,0.6); margin-bottom: 8px;
+    }
+    .badge-red { background: linear-gradient(135deg, var(--r-red), #800); }
+    .badge-black { background: linear-gradient(135deg, #333, var(--r-black)); }
+    .badge-green { background: linear-gradient(135deg, #4caf50, var(--r-green)); }
+    
+    .res-amount { font-size: 16px; color: #fff; font-weight: bold; letter-spacing: 1px; min-height: 20px;}
+
+    /* --- 轮盘桌面网格 (合理空间分配) --- */
+    .board-wrapper {
+      flex: 1; display: flex; align-items: center; justify-content: center; padding: 4px;
+    }
+    .roulette-board {
+      display: grid;
+      grid-template-columns: 42px repeat(12, 1fr);
+      grid-template-rows: repeat(3, 1fr) 1fr 1fr;
+      gap: 3px; width: 100%; height: 100%; max-height: 220px;
+    }
+    .roulette-board.disabled { pointer-events: none; opacity: 0.8; }
+
+    .r-cell {
+      border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 14px; color: #fff; position: relative; cursor: pointer; background: rgba(0,0,0,0.15); transition: filter 0.1s;
+    }
+    .r-cell:active { filter: brightness(1.5); }
+    
+    .r-zero { background: var(--r-green); grid-row: 1 / 4; grid-column: 1 / 2; font-size: 16px;}
+    .r-red { background: var(--r-red); }
+    .r-black { background: var(--r-black); }
+    
+    .r-out { background: rgba(0,0,0,0.4); font-size: 10px; color: #ccc; text-transform: uppercase; text-align: center; }
+    .r-out.gold-txt { color: var(--gold); }
+    .r-out-red { background: var(--r-red); }
+    .r-out-black { background: var(--r-black); }
+
+    /* 筹码堆叠 */
+    .chip-stack {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      display: flex; flex-direction: column-reverse; align-items: center; pointer-events: none; z-index: 15;
+    }
+    .placed-chip {
+      width: 22px; height: 22px; background: radial-gradient(circle, #fff 40%, #ccc 80%);
+      border: 2px dashed; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.8);
+      font-size: 8px; color: #000; font-weight: bold; display: flex; align-items: center; justify-content: center; margin-top: -12px;
+    }
+
+    /* ================= 4. 底部控制面板 ================= */
+    .controls-panel {
+      height: 85px; background: #161616; border-top: 1px solid #222;
+      display: flex; flex-direction: column; justify-content: center; position: relative; flex-shrink: 0; z-index: 30;
+      padding: 6px 12px;
+    }
+    .chip-rack { display: flex; justify-content: center; gap: 15px; align-items: center; margin-bottom: 6px; }
+    .rack-chip {
+      width: 38px; height: 38px; border-radius: 50%; background-color: #fff; display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 13px; color: #000; box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 0 0 3px #fff, inset 0 0 0 5px #ccc;
+      cursor: pointer; transition: transform 0.2s; pointer-events: auto;
+    }
+    .rc-1 { border: 3px dashed #9e9e9e; } .rc-5 { border: 3px dashed #e53935; } 
+    .rc-25 { border: 3px dashed #4caf50; } .rc-100 { border: 3px dashed #1e88e5; }
+    .rack-chip.selected { transform: scale(1.15) translateY(-3px); box-shadow: 0 5px 10px rgba(0,0,0,0.8), 0 0 10px var(--gold); }
+
+    .bet-actions { display: flex; gap: 10px; }
+    .btn-bet { flex: 1; height: 32px; border-radius: 5px; font-weight: bold; font-size: 13px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.3); transition: all 0.2s; }
+    .btn-undo { background: linear-gradient(to bottom, #333, #222); color: #999; border: 1px solid #111; } 
+    .btn-undo:active { background: #1a1a1a; }
+    .btn-submit { background: linear-gradient(to bottom, #333, #222); color: #999; border: 1px solid #111; pointer-events: none; }
+    .btn-submit.ready { background: linear-gradient(to bottom, #2e7d32, #1b5e20); color: #fff; pointer-events: auto; border-color: #0f4014;}
+
+    /* ================= 5. 底部聊天框 (文字居中，两边图标不动) ================= */
+    .chat-footer {
+      display: flex; align-items: center; justify-content: space-between; background-color: #1c1c1e; padding: 10px 15px;
+      border-top: 1px solid #333; color: #888; font-size: 14px;
+      flex-shrink: 0; z-index: 30; height: 42px;
+    }
+    .chat-icon { font-size: 16px; opacity: 0.7; display: flex; align-items: center; }
+    .chat-input { background: transparent; border: none; color: #fff; outline: none; font-size: 14px; text-align: center; flex: 1; }
+    .chat-input::placeholder { color: #666; }
+
+  </style>
+</head>
+<body>
+
+  <!-- 1. 严格 16:9 纯黑影片区 -->
+  <div class="video-container"></div>
+
+  <!-- 2. 状态条 -->
+  <div class="info-strip">
+    <div class="table-info"><span>♠ 04 #18 9412</span> <span>⚖ 10-100K</span></div>
+    <div class="timer-bar-container"><div class="timer-bar" id="timerBar"></div></div>
+    <div class="balance-info"><span style="color:var(--gold);">€</span> <span id="balance">200.00</span></div>
+  </div>
+
+  <!-- 3. 上下结构的轮盘桌面区 -->
+  <div class="game-interface">
+    
+    <!-- 开奖徽章弹窗 -->
+    <div class="result-banner" id="resultBanner">
+      <div class="res-subtitle" id="resSubtitle">WINNING NUMBER</div>
+      <div class="winning-badge" id="winBadge">--</div>
+      <div class="res-amount" id="resAmount"></div>
+    </div>
+
+    <!-- 网格区域 -->
+    <div class="board-wrapper">
+      <div class="roulette-board" id="rBoard"></div>
+    </div>
+  </div>
+
+  <!-- 4. 底部控制面板 -->
+  <div class="controls-panel">
+    <div class="chip-rack">
+      <div class="rack-chip rc-1" onclick="selectChip(1, this)">1</div>
+      <div class="rack-chip rc-5 selected" onclick="selectChip(5, this)">5</div>
+      <div class="rack-chip rc-25" onclick="selectChip(25, this)">25</div>
+      <div class="rack-chip rc-100" onclick="selectChip(100, this)">100</div>
+    </div>
+    <div class="bet-actions">
+      <div class="btn-bet btn-undo" onclick="undoBets()">↺ Undo</div>
+      <div class="btn-bet btn-submit" id="btnSubmit" onclick="manualConfirm()">✓ Confirm</div>
+    </div>
+  </div>
+
+  <!-- 5. 底部聊天框 (文字完美居中，两侧图标不动) -->
+  <div class="chat-footer">
+    <div class="chat-icon">💬</div>
+    <input type="text" class="chat-input" placeholder="Bet to enable chatting" disabled />
+    <div class="chat-icon" style="opacity: 1;">😀</div>
+  </div>
+
+  <script>
+    // ================= 经典轮盘核心逻辑 =================
+    let balance = 200.00;
+    let currentChip = 5;
+    let bets = {}; 
+    let confirmedBets = {}; 
+    let gameState = 'BETTING'; 
+    
+    const totalTime = 7;
+    let timeLeft = totalTime;
+    let timerInterval;
+
+    const reds = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+    const blacks = [2,4,6,8,10,11,13,15,17,20,22,24,26,28,29,31,33,35];
+
+    const row3 = [3,6,9,12,15,18,21,24,27,30,33,36];
+    const row2 = [2,5,8,11,14,17,20,23,26,29,32,35];
+    const row1 = [1,4,7,10,13,16,19,22,25,28,31,34];
+
+    const elBalance = document.getElementById('balance');
+    const timerBar = document.getElementById('timerBar');
+    const elSubmit = document.getElementById('btnSubmit');
+    const elBanner = document.getElementById('resultBanner');
+    const rBoard = document.getElementById('rBoard');
+
+    window.onload = () => { 
+      buildUprightHorizontalBoard();
+      startTimer(); 
+    };
+
+    function buildUprightHorizontalBoard() {
+      let html = '';
+      
+      html += `<div class="r-cell r-zero" style="grid-row: 1/4; grid-column: 1/2;" onclick="placeBet('num_0')">0<div class="chip-stack" id="chips-num_0"></div></div>`;
+      
+      row3.forEach((num, idx) => {
+        let color = reds.includes(num) ? 'r-red' : 'r-black';
+        html += `<div class="r-cell ${color}" style="grid-row: 1/2; grid-column: ${idx+2}/${idx+3};" onclick="placeBet('num_${num}')">${num}<div class="chip-stack" id="chips-num_${num}"></div></div>`;
+      });
+
+      row2.forEach((num, idx) => {
+        let color = reds.includes(num) ? 'r-red' : 'r-black';
+        html += `<div class="r-cell ${color}" style="grid-row: 2/3; grid-column: ${idx+2}/${idx+3};" onclick="placeBet('num_${num}')">${num}<div class="chip-stack" id="chips-num_${num}"></div></div>`;
+      });
+
+      row1.forEach((num, idx) => {
+        let color = reds.includes(num) ? 'r-red' : 'r-black';
+        html += `<div class="r-cell ${color}" style="grid-row: 3/4; grid-column: ${idx+2}/${idx+3};" onclick="placeBet('num_${num}')">${num}<div class="chip-stack" id="chips-num_${num}"></div></div>`;
+      });
+
+      html += `<div class="r-cell r-out gold-txt" style="grid-row: 4/5; grid-column: 1/5;" onclick="placeBet('doz_1')">1ST 12<div class="chip-stack" id="chips-doz_1"></div></div>`;
+      html += `<div class="r-cell r-out gold-txt" style="grid-row: 4/5; grid-column: 5/9;" onclick="placeBet('doz_2')">2ND 12<div class="chip-stack" id="chips-doz_2"></div></div>`;
+      html += `<div class="r-cell r-out gold-txt" style="grid-row: 4/5; grid-column: 9/13;" onclick="placeBet('doz_3')">3RD 12<div class="chip-stack" id="chips-doz_3"></div></div>`;
+      html += `<div class="r-cell r-out" style="grid-row: 4/5; grid-column: 13/14;" onclick="placeBet('col_3')">2:1<div class="chip-stack" id="chips-col_3"></div></div>`;
+
+      html += `<div class="r-cell r-out" style="grid-row: 5/6; grid-column: 1/3;" onclick="placeBet('out_low')">1-18<div class="chip-stack" id="chips-out_low"></div></div>`;
+      html += `<div class="r-cell r-out" style="grid-row: 5/6; grid-column: 3/5;" onclick="placeBet('out_even')">EVEN<div class="chip-stack" id="chips-out_even"></div></div>`;
+      html += `<div class="r-cell r-out-red" style="grid-row: 5/6; grid-column: 5/7;" onclick="placeBet('out_red')"><div class="chip-stack" id="chips-out_red"></div></div>`;
+      html += `<div class="r-cell r-out-black" style="grid-row: 5/6; grid-column: 7/9;" onclick="placeBet('out_black')"><div class="chip-stack" id="chips-out_black"></div></div>`;
+      html += `<div class="r-cell r-out" style="grid-row: 5/6; grid-column: 9/11;" onclick="placeBet('out_odd')">ODD<div class="chip-stack" id="chips-out_odd"></div></div>`;
+      html += `<div class="r-cell r-out" style="grid-row: 5/6; grid-column: 11/13;" onclick="placeBet('out_high')">19-36<div class="chip-stack" id="chips-out_high"></div></div>`;
+      html += `<div class="r-cell r-out" style="grid-row: 5/6; grid-column: 13/14;" onclick="placeBet('col_1')">2:1<div class="chip-stack" id="chips-col_1"></div></div>`;
+
+      rBoard.innerHTML = html;
+    }
+
+    window.selectChip = function(val, el) {
+      if(gameState !== 'BETTING') return;
+      currentChip = val;
+      document.querySelectorAll('.rack-chip').forEach(c => c.classList.remove('selected'));
+      el.classList.add('selected');
+    };
+
+    window.placeBet = function(spot) {
+      if(gameState !== 'BETTING') return;
+      if(balance < currentChip) return alert("Insufficient balance!");
+
+      balance -= currentChip;
+      bets[spot] = (bets[spot] || 0) + currentChip;
+      elBalance.innerText = balance.toLocaleString('en-US', {minimumFractionDigits:2});
+      
+      const stack = document.getElementById(`chips-${spot}`);
+      const chipEl = document.createElement('div');
+      chipEl.className = 'placed-chip';
+      chipEl.innerText = currentChip;
+      if(currentChip==1) chipEl.style.borderColor='#9e9e9e';
+      else if(currentChip==5) chipEl.style.borderColor='#e53935';
+      else if(currentChip==25) chipEl.style.borderColor='#4caf50';
+      else chipEl.style.borderColor='#1e88e5';
+      
+      chipEl.style.transform = `rotate(${Math.floor(Math.random()*60-30)}deg)`;
+      stack.appendChild(chipEl);
+
+      elSubmit.classList.add('ready');
+      elSubmit.innerText = '✓ Confirm';
+    };
+
+    window.undoBets = function() {
+      if(gameState !== 'BETTING') return;
+      let totalToRefund = Object.values(bets).reduce((a,b)=>a+b, 0);
+      if(totalToRefund === 0) return;
+
+      balance += totalToRefund;
+      elBalance.innerText = balance.toLocaleString('en-US', {minimumFractionDigits:2});
+      
+      Object.keys(bets).forEach(k => {
+        document.getElementById(`chips-${k}`).innerHTML = '';
+      });
+      bets = {};
+      elSubmit.classList.remove('ready');
+    };
+
+    window.manualConfirm = function() {
+      if(Object.keys(bets).length === 0) return; 
+      for(let key in bets) {
+        confirmedBets[key] = (confirmedBets[key] || 0) + bets[key];
+      }
+      bets = {};
+      elSubmit.classList.remove('ready');
+      elSubmit.innerText = 'Accepted';
+    };
+
+    function startTimer() {
+      gameState = 'BETTING';
+      elBanner.classList.remove('show');
+      rBoard.classList.remove('disabled');
+      document.getElementById('resAmount').innerText = "";
+      
+      document.querySelectorAll('.chip-stack').forEach(el => el.innerHTML = '');
+      
+      bets = {};
+      confirmedBets = {};
+      elSubmit.innerText = '✓ Confirm';
+      elSubmit.classList.remove('ready');
+      
+      timeLeft = totalTime;
+      timerBar.style.width = '100%';
+      timerBar.className = 'timer-bar';
+      
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        timeLeft -= 0.1;
+        if(timeLeft < 0) timeLeft = 0;
+        
+        let pct = (timeLeft / totalTime) * 100;
+        timerBar.style.width = pct + '%';
+        
+        if (timeLeft <= 1.5 && timeLeft > 0) timerBar.className = 'timer-bar danger';
+        else if (timeLeft <= 3 && timeLeft > 1.5) timerBar.className = 'timer-bar warning';
+        
+        if(timeLeft <= 0) {
+          clearInterval(timerInterval);
+          for(let key in bets) {
+             confirmedBets[key] = (confirmedBets[key] || 0) + bets[key];
+          }
+          bets = {};
+          timerBar.style.width = '0%';
+          startSpinning();
+        }
+      }, 100);
+    }
+
+    function startSpinning() {
+      gameState = 'SPINNING';
+      rBoard.classList.add('disabled'); 
+      
+      document.getElementById('resSubtitle').innerText = "SPINNING...";
+      let badge = document.getElementById('winBadge');
+      badge.className = 'winning-badge';
+      badge.innerText = "--";
+      document.getElementById('resAmount').innerText = "";
+      elBanner.classList.add('show');
+
+      setTimeout(calculateResult, 3000);
+    }
+
+    function calculateResult() {
+      const winNum = Math.floor(Math.random() * 37);
+      
+      let badgeClass = 'badge-green';
+      if(reds.includes(winNum)) badgeClass = 'badge-red';
+      else if(blacks.includes(winNum)) badgeClass = 'badge-black';
+
+      document.getElementById('resSubtitle').innerText = "WINNING NUMBER";
+      let badge = document.getElementById('winBadge');
+      badge.className = `winning-badge ${badgeClass}`;
+      badge.innerText = winNum;
+
+      if(Object.keys(confirmedBets).length === 0) {
+        document.getElementById('resAmount').innerText = "";
+        setTimeout(startTimer, 4000);
+        return;
+      }
+
+      let totalWin = 0;
+
+      for (const [spot, amount] of Object.entries(confirmedBets)) {
+        if(spot.startsWith('num_')) {
+          let betN = parseInt(spot.split('_')[1]);
+          if(betN === winNum) totalWin += amount * 36; 
+        }
+        else if (winNum !== 0) { 
+          if(spot === 'out_red' && reds.includes(winNum)) totalWin += amount * 2;
+          if(spot === 'out_black' && blacks.includes(winNum)) totalWin += amount * 2;
+          if(spot === 'out_even' && winNum % 2 === 0) totalWin += amount * 2;
+          if(spot === 'out_odd' && winNum % 2 !== 0) totalWin += amount * 2;
+          if(spot === 'out_low' && winNum >= 1 && winNum <= 18) totalWin += amount * 2;
+          if(spot === 'out_high' && winNum >= 19 && winNum <= 36) totalWin += amount * 2;
+          
+          if(spot === 'doz_1' && winNum >= 1 && winNum <= 12) totalWin += amount * 3;
+          if(spot === 'doz_2' && winNum >= 13 && winNum <= 24) totalWin += amount * 3;
+          if(spot === 'doz_3' && winNum >= 25 && winNum <= 36) totalWin += amount * 3;
+          
+          if(spot === 'col_1' && winNum % 3 === 1) totalWin += amount * 3;
+          if(spot === 'col_2' && winNum % 3 === 2) totalWin += amount * 3;
+          if(spot === 'col_3' && winNum % 3 === 0) totalWin += amount * 3;
+        }
+      }
+
+      if(totalWin > 0) {
+        balance += totalWin;
+        elBalance.innerText = balance.toLocaleString('en-US', {minimumFractionDigits:2});
+        document.getElementById('resAmount').innerText = `YOU WIN €${totalWin}`;
+        document.getElementById('resAmount').style.color = '#f9e596';
+      } else {
+        document.getElementById('resAmount').innerText = "NO WIN";
+        document.getElementById('resAmount').style.color = '#ccc';
+      }
+
+      setTimeout(() => { startTimer(); }, 4000);
+    }
+  </script>
+</body>
+</html>
